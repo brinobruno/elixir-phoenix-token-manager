@@ -8,7 +8,7 @@ defmodule TokenManagerWeb.Router do
   scope "/api", TokenManagerWeb do
     pipe_through :api
 
-    resources "/tokens", TokensController, only: [:create]
+    resources "/tokens", TokensController, only: [:index, :create, :show]
   end
 
   # Enable LiveDashboard in development

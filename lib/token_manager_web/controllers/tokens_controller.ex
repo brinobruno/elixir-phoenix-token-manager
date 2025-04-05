@@ -13,4 +13,20 @@ defmodule TokenManagerWeb.TokensController do
       |> render(:create, token: token)
     end
   end
+
+  def index(conn, _params) do
+    with {:ok, tokens} <- Tokens.get_all() do
+      conn
+      |> put_status(:ok)
+      |> render(:get, tokens: tokens)
+    end
+  end
+
+  def show(conn, %{"id" => id}) do
+    with {:ok, %Token{} = token} <- Tokens.get_one(id) do
+      conn
+      |> put_status(:ok)
+      |> render(:get, token: token)
+    end
+  end
 end

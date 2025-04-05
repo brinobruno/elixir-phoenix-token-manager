@@ -8,6 +8,9 @@ defmodule TokenManagerWeb.TokensJSON do
     }
   end
 
+  def get(%{token: token}), do: %{data: data(token)}
+  def get(%{tokens: tokens}), do: %{data: Enum.map(tokens, &data/1)}
+
   defp data(%Token{} = token) do
     %{
       id: token.id,
