@@ -7,7 +7,7 @@ defmodule TokenManager.TokenUsages.TokenUsage do
   @required_params_create [:token_id, :user_uuid, :started_at]
   @required_params_update [:token_id, :user_uuid, :started_at, :ended_at]
 
-  @derive Jason.Encoder
+  @derive {Jason.Encoder, only: [:id, :token_id, :user_uuid, :started_at, :ended_at]}
   schema "token_usages" do
     field :user_uuid, :binary_id
     field :started_at, :naive_datetime

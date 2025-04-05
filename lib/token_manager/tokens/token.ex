@@ -7,7 +7,7 @@ defmodule TokenManager.Tokens.Token do
   @required_params_create [:status]
   @required_params_update [:status, :activated_at]
 
-  @derive Jason.Encoder
+  @derive {Jason.Encoder, only: [:id, :uuid, :status, :activated_at]}
   schema "tokens" do
     field :uuid, :binary_id
     field :status, :string

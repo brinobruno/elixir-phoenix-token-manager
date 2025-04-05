@@ -2,15 +2,17 @@ defmodule TokenManagerWeb.TokensController do
   use TokenManagerWeb, :controller
 
   alias TokenManager.Tokens
+  alias TokenManager.TokenUsages
   alias Tokens.Token
+  alias TokenUsages.TokenUsage
 
   action_fallback TokenManagerWeb.FallbackController
 
   def create(conn, params) do
-    with {:ok, %Token{} = token} <- Tokens.create(params) do
+    with {:ok, %TokenUsage{} = token_usage} <- Tokens.allocate(params) do
       conn
       |> put_status(:created)
-      |> render(:create, token: token)
+      |> render(:create, token_usage: token_usage)
     end
   end
 

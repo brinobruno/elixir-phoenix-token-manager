@@ -1,10 +1,11 @@
 defmodule TokenManagerWeb.TokensJSON do
   alias TokenManager.Tokens.Token
+  alias TokenManager.TokenUsages.TokenUsage
 
-  def create(%{token: token}) do
+  def create(%{token_usage: token_usage}) do
     %{
-      message: "Token created successfully",
-      data: data(token)
+      message: "Token allocated successfully",
+      token_usage: data(token_usage)
     }
   end
 
@@ -17,6 +18,17 @@ defmodule TokenManagerWeb.TokensJSON do
       uuid: token.uuid,
       status: token.status,
       activated_at: token.activated_at
+    }
+  end
+
+  defp data(%TokenUsage{} = token_usage) do
+    %{
+      id: token_usage.id,
+      token: token_usage.token,
+      token_id: token_usage.token_id,
+      user_uuid: token_usage.user_uuid,
+      started_at: token_usage.started_at,
+      ended_at: token_usage.ended_at
     }
   end
 end

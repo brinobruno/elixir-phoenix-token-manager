@@ -5,7 +5,7 @@ defmodule TokenManager.Repo.Migrations.AddTokenUsagesTable do
     create table("token_usages") do
       add :token_id, references(:tokens), null: false
       add :user_uuid, :uuid, null: false
-      add :started_at, :naive_datetime
+      add :started_at, :naive_datetime, default: fragment("now()"), null: false
       add :ended_at, :naive_datetime
 
       timestamps()
