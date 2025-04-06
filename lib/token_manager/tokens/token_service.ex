@@ -1,10 +1,13 @@
 defmodule TokenManager.Tokens.TokenService do
-  alias TokenManager.Repo
+  import Ecto.Query
 
+  alias TokenManager.Repo
   alias TokenManager.Tokens
   alias Tokens.Token
   alias TokenManager.TokenUsages
   alias TokenUsages.TokenUsage
+
+  @number_of_tokens 100
 
   def get_one_token(id) do
     case(Repo.get(Token, id)) do
@@ -16,6 +19,36 @@ defmodule TokenManager.Tokens.TokenService do
   def get_all_tokens() do
     tokens = Repo.all(Token)
     {:ok, tokens}
+  end
+
+  def initialize_tokens() do
+    tokens = Repo.all(Token |> preload(:usages))
+
+    if Enum.empty?(tokens) do
+      generate_tokens()
+      Repo.all(Token |> preload(:usages))
+    else
+      tokens
+    end
+  end
+
+
+  defp generate_tokens() do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+    1..@number_of_tokens
+    |> Enum.map(fn _ ->
+      %{
+        status: "available",
+        uuid: Ecto.UUID.generate(),
+        inserted_at: now,
+        updated_at: now,
+        activated_at: nil
+      }
+    end)
+    |> Stream.chunk_every(13)
+    |> Task.async_stream(fn chunk -> Repo.insert_all(Token, chunk) end, max_concurrency: 8)
+    |> Stream.run()
   end
 
   @doc """
