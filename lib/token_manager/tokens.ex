@@ -1,9 +1,7 @@
 defmodule TokenManager.Tokens do
-  alias TokenManager.Tokens.Allocate
-  alias TokenManager.Tokens.GetOne
-  alias TokenManager.Tokens.GetAll
+  alias TokenManager.Tokens.TokenService
 
-  defdelegate allocate(params), to: Allocate, as: :call
-  defdelegate get_all(), to: GetAll, as: :call
-  defdelegate get_one(params), to: GetOne, as: :call
+  defdelegate allocate(params), to: TokenService, as: :allocate_token
+  defdelegate get_all(), to: TokenService, as: :get_all_tokens
+  defdelegate get_one(params), to: TokenService, as: :get_one_token
 end
