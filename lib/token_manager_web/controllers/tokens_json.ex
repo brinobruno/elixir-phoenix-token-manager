@@ -11,6 +11,7 @@ defmodule TokenManagerWeb.TokensJSON do
 
   def get(%{token: token}), do: %{data: data(token)}
   def get(%{tokens: tokens}), do: %{data: Enum.map(tokens, &data/1)}
+  def usages(%{usages: usages}), do: %{data: Enum.map(usages, &data/1)}
 
   defp data(%Token{} = token) do
     %{
@@ -24,7 +25,6 @@ defmodule TokenManagerWeb.TokensJSON do
   defp data(%TokenUsage{} = token_usage) do
     %{
       id: token_usage.id,
-      token: token_usage.token,
       token_id: token_usage.token_id,
       user_uuid: token_usage.user_uuid,
       started_at: token_usage.started_at,

@@ -30,7 +30,7 @@ defmodule TokenManager.Tokens.TokenManager do
 
   @doc """
     List one token.
-    iex> TokenManager.Tokens.TokenManager.list_one_token
+    iex> TokenManager.Tokens.TokenManager.list_token_usages(1)
   """
   def list_token_usages(token_id) do
     GenServer.call(__MODULE__, {:list_usages, token_id})
@@ -120,7 +120,7 @@ defmodule TokenManager.Tokens.TokenManager do
   def handle_call(:release_all_tokens, _from, state) do
     Logger.info("Manual release of all tokens")
     updated_tokens = do_release_token(state.tokens)
-    {:reply, :ok, %{state | tokens: updated_tokens}}
+    {:reply, {:ok, updated_tokens}, %{state | tokens: updated_tokens}}
   end
 
   @impl true

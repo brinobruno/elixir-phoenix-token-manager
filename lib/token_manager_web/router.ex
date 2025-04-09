@@ -9,6 +9,8 @@ defmodule TokenManagerWeb.Router do
     pipe_through :api
 
     resources "/tokens", TokensController, only: [:index, :create, :show]
+    get "/tokens/:id/usages", TokensController, :show_usages
+    post "/tokens/clear", TokensController, :clear
   end
 
   # Enable LiveDashboard in development
