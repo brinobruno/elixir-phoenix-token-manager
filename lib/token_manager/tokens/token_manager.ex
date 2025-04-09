@@ -41,7 +41,7 @@ defmodule TokenManager.Tokens.TokenManager do
     iex> any_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
     iex> TokenManager.Tokens.TokenManager.get_available_token(any_uuid)
   """
-  def get_available_token(user_uuid) do
+  def get_available_token(%{"user_uuid" => user_uuid}) do
     GenServer.call(__MODULE__, {:allocate_token, user_uuid})
   end
 
@@ -110,10 +110,7 @@ defmodule TokenManager.Tokens.TokenManager do
 
     case token_result do
       {:ok, token_usage} ->
-        {:reply, {:ok, %{
-          token_id: token_usage.token_id,
-          user_id: token_usage.user_uuid
-        }}, %{state | tokens: updated_tokens}}
+        {:reply, {:ok, token_usage}, %{state | tokens: updated_tokens}}
       {:error, reason} ->
         {:reply, {:error, reason}, state}
     end

@@ -5,11 +5,12 @@ defmodule TokenManagerWeb.TokensController do
   alias TokenManager.TokenUsages
   alias Tokens.Token
   alias TokenUsages.TokenUsage
+  alias Tokens.TokenManager
 
   action_fallback TokenManagerWeb.FallbackController
 
   def create(conn, params) do
-    with {:ok, %TokenUsage{} = token_usage} <- Tokens.allocate(params) do
+    with {:ok, %TokenUsage{} = token_usage} <- TokenManager.get_available_token(params) do
       conn
       |> put_status(:created)
       |> render(:create, token_usage: token_usage)
@@ -17,7 +18,7 @@ defmodule TokenManagerWeb.TokensController do
   end
 
   def index(conn, _params) do
-    with {:ok, tokens} <- Tokens.get_all() do
+    with {:ok, tokens} <- TokenManager.list_all_tokens() do
       conn
       |> put_status(:ok)
       |> render(:get, tokens: tokens)
@@ -25,7 +26,7 @@ defmodule TokenManagerWeb.TokensController do
   end
 
   def show(conn, %{"id" => id}) do
-    with {:ok, %Token{} = token} <- Tokens.get_one(id) do
+    with {:ok, %Token{} = token} <- TokenManager.list_one_token(id) do
       conn
       |> put_status(:ok)
       |> render(:get, token: token)
