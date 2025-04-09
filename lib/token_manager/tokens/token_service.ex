@@ -1,24 +1,34 @@
 defmodule TokenManager.Tokens.TokenService do
   import Ecto.Query
 
+  require Logger
+
   alias TokenManager.Repo
   alias TokenManager.Tokens
   alias Tokens.Token
   alias TokenManager.TokenUsages
   alias TokenUsages.TokenUsage
+  alias Tokens.Utils
 
-  @number_of_tokens 3
-
-  def get_one_token(id) do
-    case(Repo.get(Token, id, preload: [:usages])) do
+  def get_one_token(token_uuid) do
+    case Repo.get_by(Token, uuid: token_uuid) do
       nil -> {:error, :not_found}
-      token -> {:ok, token}
+      token -> {:ok, Repo.preload(token, :usages)}
     end
   end
 
   def get_all_tokens() do
     tokens = Repo.all(Token, preload: [:usages])
     {:ok, tokens}
+  end
+
+  def get_token_usages(token_id) do
+    query = from(u in TokenUsage, select: u, where: u.token_id == ^token_id)
+
+    case Repo.all(query) do
+      nil -> {:error, :not_found}
+      usages -> {:ok, usages}
+    end
   end
 
   def initialize_tokens() do
@@ -32,11 +42,56 @@ defmodule TokenManager.Tokens.TokenService do
     end
   end
 
+  def allocate_token(params) do
+    updated_params = Map.put(params, "started_at", NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
+
+    case Repo.transaction(fn ->
+          with {:ok, %TokenUsage{} = token_usage} <- update_token_usage(:create, updated_params),
+                {:ok, _updated_token} <- update_token_status_and_time(:allocate, updated_params["token_uuid"]) do
+            token_usage = Repo.preload(token_usage, :token)
+            {:ok, token_usage}
+          else
+            error ->
+              IO.inspect(error, label: "❌ allocate_token transaction error")
+              Repo.rollback(error)
+          end
+        end) do
+      {:ok, result} -> result
+      {:error, reason} ->
+        IO.inspect(reason, label: "❌ allocate_token outer error")
+        {:error, %{message: inspect(reason)}}
+    end
+  end
+
+  def release_token(token) do
+    if token == nil do
+      {:error, %{message: "Invalid token provided"}}
+    else
+      case Repo.transaction(fn ->
+        do_release_token_and_usage(token)
+      end) do
+        {:ok, result} -> result
+        {:error, reason} -> {:error, %{message: inspect(reason)}}
+      end
+    end
+  end
+
+  def release_tokens(tokens) do
+    case Repo.transaction(fn ->
+      Enum.map(tokens, fn token ->
+        {:ok, %{token: updated_token}} = do_release_token_and_usage(token)
+        updated_token
+      end)
+    end) do
+      {:ok, updated_tokens} -> {:ok, updated_tokens}
+      {:error, reason} -> {:error, %{message: inspect(reason)}}
+    end
+  end
 
   defp generate_tokens() do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    1..@number_of_tokens
+    1..Utils.get(:number_of_tokens)
     |> Enum.map(fn _ ->
       %{
         status: "available",
@@ -46,25 +101,11 @@ defmodule TokenManager.Tokens.TokenService do
         activated_at: nil
       }
     end)
-    |> Stream.chunk_every(13)
+    |> Stream.chunk_every(13) # ~ 100 (@number_of_tokens) / 8 (max_concurrency)
     |> Task.async_stream(fn chunk -> Repo.insert_all(Token, chunk) end, max_concurrency: 8)
     |> Stream.run()
   end
 
-  # TODO: update these @docs later
-  @doc """
-    Creates a new token usage in the database.
-    iex> params = %{status: "active"}
-    iex> TokenManager.Tokens.create(params)
-  """
-
-  @doc """
-    Creates a new token usage for an existing token in the database.
-    iex> token_params = %{status: "active"}
-    iex> TokenManager.Tokens.create(params)
-    iex> token_usageparams = %{token_id: 1, user_uuid: "c9007b1f-4ff3-4688-853e-d826cdb708ac", started_at: ~N[2025-04-05 12:00:00]}
-    iex> TokenManager.TokenUsages.create()
-  """
   defp update_token_usage(:create, params) do
     params
     |> TokenUsage.changeset()
@@ -83,60 +124,33 @@ defmodule TokenManager.Tokens.TokenService do
     end
   end
 
-  def allocate_token(params) do
-    updated_params = Map.put(params, "started_at", NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
-
-    case Repo.transaction(fn ->
-          with {:ok, %TokenUsage{} = token_usage} <- update_token_usage(:create, updated_params),
-                {:ok, _updated_token} <- update_token_status_and_time(:allocate, updated_params["token_id"]) do
-            token_usage = Repo.preload(token_usage, :token)
-            {:ok, token_usage}
-          else
-            error ->
-              IO.inspect(error, label: "❌ allocate_token transaction error")
-              Repo.rollback(error)
-          end
-        end) do
-      {:ok, result} -> result
-      {:error, reason} ->
-        IO.inspect(reason, label: "❌ allocate_token outer error")
-        {:error, %{message: inspect(reason)}}
-    end
-  end
-
-  def release_token(token) do
+  defp do_release_token_and_usage(token) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    case Repo.transaction(fn ->
-      # Get the active usage (with no ended_at)
-      usage =
-        TokenUsage
-        |> where([u], u.token_id == ^token.id and is_nil(u.ended_at))
-        |> limit(1)
-        |> Repo.one()
+    usage =
+      TokenUsage
+      |> where([u], u.token_id == ^token.id and is_nil(u.ended_at))
+      |> limit(1)
+      |> Repo.one()
 
-        IO.inspect(usage, label: "🔍 Inspecting usage")
-
-      if usage do
+    case usage do
+      %TokenUsage{} = usage ->
         with {:ok, _updated_usage} <- update_token_usage(:update, %{id: usage.id, ended_at: now}),
-             {:ok, _updated_token} <- update_token_status_and_time(:release, token.id) do
+             {:ok, _updated_token} <- update_token_status_and_time(:release, token.uuid) do
           {:ok, %{token: %{token | status: "available"}}}
         else
           error ->
             IO.inspect(error, label: "❌ release_token inner error")
             Repo.rollback(error)
         end
-      else
-        Repo.rollback(:no_active_usage_found)
-      end
-    end) do
-      {:ok, result} -> result
-      {:error, reason} -> {:error, %{message: inspect(reason)}}
+      nil ->
+        Logger.warn("No active usage found for token of id: #{token.id}")
+        {:ok, %{token: %{token | status: "available"}}}
     end
   end
 
-  defp update_token_status_and_time(:release, token_id) do
-    case get_one_token(token_id) do
+  defp update_token_status_and_time(:release, token_uuid) do
+    case get_one_token(token_uuid) do
       {:ok, token} ->
         token
         |> Token.changeset(%{
@@ -148,8 +162,8 @@ defmodule TokenManager.Tokens.TokenService do
     end
   end
 
-  defp update_token_status_and_time(:allocate, token_id) do
-    case get_one_token(token_id) do
+  defp update_token_status_and_time(:allocate, token_uuid) do
+    case get_one_token(token_uuid) do
       {:ok, token} ->
         token
         |> Token.changeset(%{
