@@ -1,4 +1,4 @@
-defmodule TokenManager.Tokens.TokenManagerTest do
+defmodule TokenManager.Tokens.TokenServiceTest do
   use ExUnit.Case, async: true
 
   import Mox
