@@ -55,7 +55,8 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   def allocate_token(params) do
-    updated_params = Map.put(params, "started_at", NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
+    updated_params =
+      Map.put_new(params, "started_at", NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
 
     case Repo.transaction(fn ->
           with {:ok, %TokenUsage{} = token_usage} <- update_token_usage(:create, updated_params),

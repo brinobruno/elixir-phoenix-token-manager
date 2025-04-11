@@ -132,12 +132,9 @@ defmodule TokenManager.Tokens.TokenServiceTest do
       end)
 
       {:ok, queried_tokens} = TokenService.get_all_tokens()
-
       assert Enum.all?(queried_tokens, fn token -> token.status == "active" end)
 
-      Process.sleep(1000) # Ensure we're in a new second (ended_at truncate :second)
       assert {:ok, updated_tokens} = TokenService.release_tokens(tokens)
-
       assert is_list(updated_tokens) == true
       assert length(updated_tokens) == length(tokens)
       assert Enum.all?(updated_tokens, fn token -> token.status == "available" end)
@@ -158,9 +155,7 @@ defmodule TokenManager.Tokens.TokenServiceTest do
         token.uuid == any_token.uuid and token.status == "active"
       end)
 
-      Process.sleep(1000) # Ensure we're in a new second (ended_at truncate :second)
       assert {:ok, %{token: updated_token}} = TokenService.release_token(any_token)
-
       assert is_struct(updated_token, Token)
       assert updated_token.status == "available"
     end

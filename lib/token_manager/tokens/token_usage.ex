@@ -36,15 +36,14 @@ defmodule TokenManager.TokenUsages.TokenUsage do
     |> validate_required(fields)
     |> validate_format(:user_uuid, ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i)
     |> validate_change(:ended_at, fn :ended_at, ended_at ->
-      started_at = get_field(changeset, :started_at)
+      started_at = get_field(changeset, :started_at) || changeset.data.started_at
 
       case started_at do
         nil -> []
-        _ when ended_at > started_at -> []
+        _ when ended_at >= started_at -> []
         _ -> [ended_at: "must be after started_at"]
       end
     end)
     |> foreign_key_constraint(:token_id)
   end
-
 end

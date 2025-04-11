@@ -17,6 +17,10 @@ defmodule TokenManagerWeb.TokensController do
     end
   end
 
+  @doc """
+    curl --request GET \
+    --url http://localhost:4000/api/tokens
+  """
   def index(conn, _params) do
     with {:ok, tokens} <- TokenManager.call(:list_tokens) do
       conn
