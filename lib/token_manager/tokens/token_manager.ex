@@ -7,66 +7,58 @@ defmodule TokenManager.Tokens.TokenManager do
   alias Tokens.TokenService
   alias Tokens.Utils
 
-  # Client
+  @token_service Application.compile_env(:token_manager, :token_service, TokenService)
+
+  # Client (Public API)
   def start_link(state \\ []) do
     GenServer.start_link(__MODULE__, state, name: __MODULE__)
   end
 
   @doc """
-    Lists all active and available tokens.
-    iex> TokenManager.Tokens.TokenManager.list_all_tokens
+  Handles various token-related operations.
+    - Lists all active and available tokens:
+    iex> TokenManager.Tokens.TokenManager.call(:list_tokens)
+
+    - Lists one token:
+    iex> token_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
+    iex> TokenManager.Tokens.TokenManager.call(:list_token, token_uuid)
+
+    - Lists one token usage:
+    iex> TokenManager.Tokens.TokenManager.call(:list_usages, 1)
+
+    - Assigns a token to a user:
+    iex> any_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
+    iex> TokenManager.Tokens.TokenManager.call(:allocate_token, any_uuid)
+
+    - Releases all tokens:
+    iex> existing_token_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
+    iex> TokenManager.Tokens.TokenManager.call(existing_token_uuid)
   """
-  def list_all_tokens() do
+  def call(:list_tokens) do
     GenServer.call(__MODULE__, :list_tokens)
   end
 
-  @doc """
-    Lists one token.
-    iex> TokenManager.Tokens.TokenManager.list_one_token
-  """
-  def list_one_token(token_uuid) do
-    GenServer.call(__MODULE__, {:list_token, token_uuid})
-  end
-
-  @doc """
-    List one token.
-    iex> TokenManager.Tokens.TokenManager.list_token_usages(1)
-  """
-  def list_token_usages(token_id) do
-    GenServer.call(__MODULE__, {:list_usages, token_id})
-  end
-
-  @doc """
-    Assigns a token to a user.
-    iex> any_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
-    iex> TokenManager.Tokens.TokenManager.get_available_token(any_uuid)
-  """
-  def get_available_token(%{"user_uuid" => user_uuid}) do
-    GenServer.call(__MODULE__, {:allocate_token, user_uuid})
-  end
-
-  @doc """
-    Releases all tokens.
-    iex> TokenManager.Tokens.TokenManager.release_all_tokens
-  """
-  def release_all_tokens() do
+  def call(:release_all_tokens) do
     GenServer.call(__MODULE__, :release_all_tokens)
   end
 
-  @doc """
-    Releases a token.
-    iex> existing_token_uuid = "5f1448c2-9228-49b7-95eb-fc2352245960"
-    iex> TokenManager.Tokens.TokenManager.release_token(existing_token_uuid)
-  """
-  def release_token(token_uuid) do
-    GenServer.cast(__MODULE__, {:release_token, token_uuid})
+  def call(:list_token, token_uuid) do
+    GenServer.call(__MODULE__, {:list_token, token_uuid})
   end
 
-  # Server
+  def call(:list_usages, token_id) do
+    GenServer.call(__MODULE__, {:list_usages, token_id})
+  end
+
+  def call(:allocate_token, %{"user_uuid" => user_uuid}) do
+    GenServer.call(__MODULE__, {:allocate_token, user_uuid})
+  end
+
+  # Server (GenServer Callbacks)
   @impl true
   def init(_state) do
-    tokens = TokenService.initialize_tokens()
-    Logger.info("✅ Tokens initialized: #{inspect(tokens)}")
+    tokens = @token_service.initialize_tokens()
+    Logger.info("✅ Tokens initialized: #{length(tokens)}")
 
     # Schedule periodic expiration check
     Process.send_after(self(), :check_expiry, Utils.get(:check_interval_in_seconds) * 1000)
@@ -76,13 +68,13 @@ defmodule TokenManager.Tokens.TokenManager do
 
   @impl true
   def handle_call(:list_tokens, _from, state) do
-    tokens = TokenService.get_all_tokens()
+    tokens = @token_service.get_all_tokens()
     {:reply, tokens, state}
   end
 
   @impl true
   def handle_call({:list_token, token_uuid}, _from, state) do
-    token_result = TokenService.get_one_token(token_uuid)
+    token_result = @token_service.get_one_token(token_uuid)
 
     case token_result do
       {:ok, token} ->
@@ -94,7 +86,7 @@ defmodule TokenManager.Tokens.TokenManager do
 
   @impl true
   def handle_call({:list_usages, token_id}, _from, state) do
-    token_usage_result = TokenService.get_token_usages(token_id)
+    token_usage_result = @token_service.get_token_usages(token_id)
 
     case token_usage_result do
       {:ok, usages} ->
@@ -141,13 +133,13 @@ defmodule TokenManager.Tokens.TokenManager do
     {:noreply, %{state | tokens: updated_tokens}}
   end
 
-  def allocate_token(tokens, user_uuid) do
+  defp allocate_token(tokens, user_uuid) do
     # Check for expired tokens first
     {tokens_after_expiry, _expired} = check_and_release_expired(tokens)
     available_token = Enum.find(tokens_after_expiry, fn token -> token.status == "available" end)
 
     if available_token do
-      case TokenService.allocate_token(%{
+      case @token_service.allocate_token(%{
         "token_id" => available_token.id,
         "token_uuid" => available_token.uuid,
         "user_uuid" => user_uuid
@@ -181,7 +173,7 @@ defmodule TokenManager.Tokens.TokenManager do
         Logger.warn("⚠️ Token not found for release: #{token_uuid}")
         tokens
       token ->
-        case TokenService.release_token(token) do
+        case @token_service.release_token(token) do
           {:ok, token_usage} ->
             updated_token = token_usage.token
             update_token_list(tokens, updated_token)
@@ -193,7 +185,7 @@ defmodule TokenManager.Tokens.TokenManager do
   end
 
   defp do_release_token(tokens) do
-    case TokenService.release_tokens(tokens) do
+    case @token_service.release_tokens(tokens) do
       {:ok, updated_tokens} ->
         updated_tokens
       {:error, reason} ->

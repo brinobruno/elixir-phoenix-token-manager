@@ -1,4 +1,6 @@
 defmodule TokenManager.Tokens.TokenService do
+  @behaviour TokenManager.Tokens.TokenServiceBehaviour
+
   import Ecto.Query
 
   require Logger
@@ -18,16 +20,26 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   def get_all_tokens() do
-    tokens = Repo.all(Token, preload: [:usages])
+    tokens =
+      from(t in Token, preload: [:usages])
+      |> Repo.all()
+
     {:ok, tokens}
   end
 
   def get_token_usages(token_id) do
-    query = from(u in TokenUsage, select: u, where: u.token_id == ^token_id)
+    query = from(u in TokenUsage, where: u.token_id == ^token_id)
+    usages = Repo.all(query)
 
-    case Repo.all(query) do
-      nil -> {:error, :not_found}
-      usages -> {:ok, usages}
+    case usages do
+      [] ->
+        case Repo.get(Token, token_id) do
+          nil -> {:error, :not_found}
+          _ -> {:ok, []}
+        end
+
+      _ ->
+        {:ok, usages}
     end
   end
 
