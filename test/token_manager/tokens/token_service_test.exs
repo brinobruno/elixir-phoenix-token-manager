@@ -10,7 +10,6 @@ defmodule TokenManager.Tokens.TokenServiceTest do
 
   alias Tokens.Token
   alias Tokens.TokenService
-  alias Tokens.TokenManager
   alias Tokens.Utils
 
   setup :verify_on_exit!
@@ -46,7 +45,7 @@ defmodule TokenManager.Tokens.TokenServiceTest do
       assert queried_token.uuid == any_token.uuid
     end
 
-    test "returns error when token is not found" do
+    test "returns error when token is not found", %{tokens: _tokens} do
       random_uuid = Ecto.UUID.generate()
       assert {:error, :not_found} == TokenService.get_one_token(random_uuid)
     end
@@ -111,7 +110,7 @@ defmodule TokenManager.Tokens.TokenServiceTest do
       assert usage.token.status == "active"
     end
 
-    test "returns error when allocating a token with invalid params", %{tokens: tokens} do
+    test "returns error when allocating a token with invalid params", %{tokens: _tokens} do
       {:error, %{message: msg}} = TokenService.allocate_token(%{
         "token_id" => nil,
         "user_uuid" => nil,
