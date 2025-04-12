@@ -91,10 +91,15 @@ defmodule TokenManager.Tokens.TokenService do
 
   def release_tokens(tokens) do
     case Repo.transaction(fn ->
-      Enum.map(tokens, fn token ->
-        {:ok, %{token: updated_token}} = do_release_token_and_usage(token)
-        updated_token
-      end)
+      tokens
+      |> Stream.chunk_every(13)
+      |> Task.async_stream(fn chunk ->
+        Enum.map(chunk, fn token ->
+          {:ok, %{token: updated_token}} = do_release_token_and_usage(token)
+          updated_token
+        end)
+      end, max_concurrency: 8)
+      |> Enum.reduce([], fn {:ok, updated_tokens}, acc -> acc ++ updated_tokens end)
     end) do
       {:ok, updated_tokens} -> {:ok, updated_tokens}
       {:error, reason} -> {:error, %{message: inspect(reason)}}
