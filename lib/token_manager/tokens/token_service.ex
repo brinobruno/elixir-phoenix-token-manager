@@ -90,15 +90,18 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   def release_tokens(tokens) do
+    max_concurrency = Utils.get(:max_concurrency)
+    chunk_size = get_chunk_size(length(tokens), max_concurrency)
+
     case Repo.transaction(fn ->
       tokens
-      |> Stream.chunk_every(13)
+      |> Stream.chunk_every(chunk_size)
       |> Task.async_stream(fn chunk ->
         Enum.map(chunk, fn token ->
           {:ok, %{token: updated_token}} = do_release_token_and_usage(token)
           updated_token
         end)
-      end, max_concurrency: 8)
+      end, max_concurrency: max_concurrency)
       |> Enum.reduce([], fn {:ok, updated_tokens}, acc -> acc ++ updated_tokens end)
     end) do
       {:ok, updated_tokens} -> {:ok, updated_tokens}
@@ -107,9 +110,13 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   defp generate_tokens() do
+    total_tokens = Utils.get(:number_of_tokens)
+    max_concurrency = Utils.get(:max_concurrency)
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
-    1..Utils.get(:number_of_tokens)
+    chunk_size = get_chunk_size(total_tokens, max_concurrency)
+
+    1..total_tokens
     |> Enum.map(fn _ ->
       %{
         status: "available",
@@ -119,9 +126,16 @@ defmodule TokenManager.Tokens.TokenService do
         activated_at: nil
       }
     end)
-    |> Stream.chunk_every(13) # ~ 100 (@number_of_tokens) / 8 (max_concurrency)
-    |> Task.async_stream(fn chunk -> Repo.insert_all(Token, chunk) end, max_concurrency: 8)
+    |> Stream.chunk_every(chunk_size)
+    |> Task.async_stream(fn chunk ->
+      Repo.insert_all(Token, chunk)
+    end, max_concurrency: max_concurrency)
     |> Stream.run()
+  end
+
+  defp get_chunk_size(total_tokens, max_concurrency) do
+    # Calculate optimal chunk size (ceiling division to ensure all items are processed)
+    div(total_tokens + max_concurrency - 1, max_concurrency)
   end
 
   defp update_token_usage(:create, params) do
