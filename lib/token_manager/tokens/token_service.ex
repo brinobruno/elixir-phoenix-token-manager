@@ -44,14 +44,31 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   def initialize_tokens() do
-    tokens = Repo.all(Token |> preload(:usages))
+    token_count = Repo.aggregate(Token, :count, :id)
 
-    if Enum.empty?(tokens) do
+    if token_count == 0 do
       generate_tokens()
-      Repo.all(Token |> preload(:usages))
+      load_tokens_in_batches(token_count)
     else
-      tokens
+      load_tokens_in_batches(token_count)
     end
+  end
+
+  defp load_tokens_in_batches(token_count) do
+    max_concurrency = Utils.get(:max_concurrency)
+    chunk_size = get_chunk_size(token_count, max_concurrency)
+
+    {:ok, tokens} = Repo.transaction(fn ->
+      Token
+      |> Repo.stream()
+      |> Stream.chunk_every(chunk_size)
+      |> Task.async_stream(fn chunk ->
+        Repo.preload(chunk, :usages)
+      end, max_concurrency: max_concurrency)
+      |> Enum.reduce([], fn {:ok, tokens}, acc -> acc ++ tokens end)
+    end)
+
+    tokens
   end
 
   def allocate_token(params) do
