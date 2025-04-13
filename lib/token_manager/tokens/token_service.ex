@@ -147,12 +147,12 @@ defmodule TokenManager.Tokens.TokenService do
     |> Task.async_stream(fn chunk ->
       Repo.insert_all(Token, chunk)
     end, max_concurrency: max_concurrency)
-    |> Stream.run()
+    |> Enum.to_list()
   end
 
   defp get_chunk_size(total_tokens, max_concurrency) do
     # Calculate optimal chunk size (ceiling division to ensure all items are processed)
-    div(total_tokens + max_concurrency - 1, max_concurrency)
+    max(1, div(total_tokens + max_concurrency - 1, max_concurrency))
   end
 
   defp update_token_usage(:create, params) do
