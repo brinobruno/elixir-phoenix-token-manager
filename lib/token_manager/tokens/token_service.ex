@@ -27,6 +27,17 @@ defmodule TokenManager.Tokens.TokenService do
     {:ok, tokens}
   end
 
+  def get_expired_tokens(expiration_threshold) do
+    tokens =
+      from(t in Token,
+        where: t.status == "active" and t.activated_at < ^expiration_threshold,
+        preload: [:usages]
+      )
+      |> Repo.all()
+
+    {:ok, tokens}
+  end
+
   def get_token_usages(token_id) do
     query = from(u in TokenUsage, where: u.token_id == ^token_id)
     usages = Repo.all(query)
@@ -55,17 +66,15 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   defp load_tokens_in_batches(token_count) do
-    max_concurrency = Utils.get(:max_concurrency)
-    chunk_size = get_chunk_size(token_count, max_concurrency)
+    chunk_size = get_chunk_size(token_count, Utils.get(:max_concurrency))
 
     {:ok, tokens} = Repo.transaction(fn ->
       Token
       |> Repo.stream()
       |> Stream.chunk_every(chunk_size)
-      |> Task.async_stream(fn chunk ->
+      |> Enum.flat_map(fn chunk ->
         Repo.preload(chunk, :usages)
-      end, max_concurrency: max_concurrency)
-      |> Enum.reduce([], fn {:ok, tokens}, acc -> acc ++ tokens end)
+      end)
     end)
 
     tokens
@@ -107,23 +116,19 @@ defmodule TokenManager.Tokens.TokenService do
   end
 
   def release_tokens(tokens) do
-    max_concurrency = Utils.get(:max_concurrency)
-    chunk_size = get_chunk_size(length(tokens), max_concurrency)
+    chunk_size = get_chunk_size(length(tokens), Utils.get(:max_concurrency))
 
-    case Repo.transaction(fn ->
+    updated_tokens =
       tokens
       |> Stream.chunk_every(chunk_size)
-      |> Task.async_stream(fn chunk ->
+      |> Enum.flat_map(fn chunk ->
         Enum.map(chunk, fn token ->
           {:ok, %{token: updated_token}} = do_release_token_and_usage(token)
           updated_token
         end)
-      end, max_concurrency: max_concurrency)
-      |> Enum.reduce([], fn {:ok, updated_tokens}, acc -> acc ++ updated_tokens end)
-    end) do
-      {:ok, updated_tokens} -> {:ok, updated_tokens}
-      {:error, reason} -> {:error, %{message: inspect(reason)}}
-    end
+      end)
+
+    {:ok, updated_tokens}
   end
 
   defp generate_tokens() do

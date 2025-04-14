@@ -124,7 +124,7 @@ defmodule TokenManager.Tokens.TokenManager do
 
   @impl true
   def handle_info(:check_expiry, state) do
-    {updated_tokens, expired} = check_and_release_expired(state.tokens)
+    {updated_tokens, expired} = check_and_release_expired()
 
     if expired, do: Logger.info("Periodic check released expired tokens")
 
@@ -133,9 +133,9 @@ defmodule TokenManager.Tokens.TokenManager do
     {:noreply, %{state | tokens: updated_tokens}}
   end
 
-  defp allocate_token(tokens, user_uuid) do
+  defp allocate_token(_tokens, user_uuid) do
     # Check for expired tokens first
-    {tokens_after_expiry, _expired} = check_and_release_expired(tokens)
+    {tokens_after_expiry, _expired} = check_and_release_expired()
     available_token = Enum.find(tokens_after_expiry, fn token -> token.status == "available" end)
 
     if available_token do
@@ -212,19 +212,32 @@ defmodule TokenManager.Tokens.TokenManager do
     end
   end
 
-  defp check_and_release_expired(tokens) do
+  defp check_and_release_expired do
     now = NaiveDateTime.utc_now()
     expiration_threshold = NaiveDateTime.add(now, -Utils.get(:max_active_token_duration_in_minutes) * 60, :second)
 
-    Enum.reduce(tokens, {tokens, false}, fn token, {acc_tokens, expired_flag} ->
-      if token.status == "active" && NaiveDateTime.compare(token.activated_at, expiration_threshold) == :lt do
-        updated_tokens = do_release_token(acc_tokens, token.uuid)
-        Logger.info("✅ Expired token released: #{token.uuid}")
-        {updated_tokens, true}
-      else
-        {acc_tokens, expired_flag}
-      end
-    end)
+    # Fetch only active tokens that might be expired
+    {:ok, expired_tokens} = @token_service.get_expired_tokens(expiration_threshold)
+
+    {updated_tokens, expired_flag} =
+      Enum.reduce(expired_tokens, {[], false}, fn token, {acc_tokens, expired_flag} ->
+        case @token_service.release_token(token) do
+          {:ok, token_usage} ->
+            Logger.info("✅ Expired token released: #{token.uuid}")
+            {acc_tokens ++ [token_usage.token], true}
+          {:error, reason} ->
+            Logger.error("❌ Could not release token #{token.uuid}: #{inspect(reason)}")
+            {acc_tokens ++ [token], expired_flag}
+        end
+      end)
+
+    {:ok, all_tokens} = @token_service.get_all_tokens()
+    {Enum.map(all_tokens, fn t ->
+       case Enum.find(updated_tokens, &(&1.id == t.id)) do
+         nil -> t
+         updated -> updated
+       end
+     end), expired_flag}
   end
 
   defp update_token_list(tokens, updated_token) do
