@@ -16,14 +16,16 @@ defmodule TokenManager.Application do
       # {TokenManager.Worker, arg},
       # Start to serve requests, typically the last entry
       TokenManagerWeb.Endpoint,
-      {TokenManager.Tokens.TokenManager, []}
-    ]
+    ] ++ token_manager_child(Mix.env())
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: TokenManager.Supervisor]
     Supervisor.start_link(children, opts)
   end
+
+  defp token_manager_child(:test), do: []
+  defp token_manager_child(_env), do: [{TokenManager.Tokens.TokenManager, []}]
 
   # Tell Phoenix to update the endpoint configuration
   # whenever the application is updated.

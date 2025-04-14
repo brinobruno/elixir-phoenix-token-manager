@@ -2,19 +2,20 @@ defmodule TokenManager.Tokens.TokenManagerTest do
   use ExUnit.Case, async: false
 
   alias TokenManager.Tokens
+  alias Tokens.TokenService
   alias Tokens.Token
   alias Tokens.Utils
   alias TokenManager.Repo
 
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo)
-
-    unless Process.whereis(Tokens.TokenManager) do
-      {:ok, _pid} = start_supervised(Tokens.TokenManager)
-    end
-
     Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
-    :ok
+
+    # Start the GenServer (therefore, initializes tokens, so sending empty arr)
+    {:ok, pid} = start_supervised({Tokens.TokenManager, []})
+
+    {:ok, tokens} = TokenService.get_all_tokens()
+    {:ok, pid: pid, tokens: tokens}
   end
 
   test "lists all tokens" do
@@ -41,5 +42,43 @@ defmodule TokenManager.Tokens.TokenManagerTest do
 
     assert {:ok, usage} = Tokens.TokenManager.call(:allocate_token, %{"user_uuid" => user_uuid})
     assert usage.user_uuid == user_uuid
+  end
+
+  test "automatically releases expired tokens", %{pid: pid} do
+    # Allocate a token to a user
+    user_uuid = Ecto.UUID.generate()
+    {:ok, usage} = Tokens.TokenManager.call(:allocate_token, %{"user_uuid" => user_uuid})
+    token = usage.token
+    assert token.status == "active"
+    assert token.activated_at != nil
+
+    # Update the token's activated_at to simulate expiration
+    expiration_minutes = Utils.get(:max_active_token_duration_in_minutes)
+    past_time =
+      NaiveDateTime.utc_now()
+      |> NaiveDateTime.add(-(expiration_minutes + 1) * 60, :second)
+      |> NaiveDateTime.truncate(:second)
+
+    Ecto.Changeset.change(token, activated_at: past_time)
+    |> Repo.update!()
+
+    # Verify token is active before expiry check
+    {:ok, updated_token} = TokenService.get_one_token(token.uuid)
+    assert updated_token.status == "active"
+
+    # Trigger the expiry check
+    send(pid, :check_expiry)
+
+    # Allow time for the GenServer to process the message
+    Process.sleep(50)
+
+    # Verify the token was released
+    {:ok, released_token} = TokenService.get_one_token(token.uuid)
+    assert released_token.status == "available"  # This fails
+    assert released_token.activated_at == past_time
+
+    # Verify the token usage was ended
+    {:ok, usages} = TokenService.get_token_usages(token.id)
+    assert Enum.any?(usages, fn u -> u.id == usage.id and u.ended_at != nil end)
   end
 end
