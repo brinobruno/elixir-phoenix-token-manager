@@ -1,5 +1,8 @@
 defmodule TokenManager.Tokens.TokenManagerTest do
   use ExUnit.Case, async: false
+  use ExMachina
+
+  import TokenManager.Factory
 
   alias TokenManager.Tokens
   alias Tokens.TokenService
@@ -45,12 +48,9 @@ defmodule TokenManager.Tokens.TokenManagerTest do
   end
 
   test "automatically releases expired tokens", %{pid: pid} do
-    # Allocate a token to a user
-    user_uuid = Ecto.UUID.generate()
-    {:ok, usage} = Tokens.TokenManager.call(:allocate_token, %{"user_uuid" => user_uuid})
-    token = usage.token
-    assert token.status == "active"
-    assert token.activated_at != nil
+    # Allocate a token to a user, then a usage
+    token = insert(:token, status: "active", activated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
+    usage = insert(:usage, token: token)
 
     # Update the token's activated_at to simulate expiration
     expiration_minutes = Utils.get(:max_active_token_duration_in_minutes)
