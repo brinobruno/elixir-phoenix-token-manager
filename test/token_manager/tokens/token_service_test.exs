@@ -1,7 +1,9 @@
 defmodule TokenManager.Tokens.TokenServiceTest do
   use ExUnit.Case, async: true
+  use ExMachina
 
   import Mox
+  import TokenManager.Factory
 
   alias TokenManager.Repo
   alias TokenManager.Tokens
@@ -36,18 +38,18 @@ defmodule TokenManager.Tokens.TokenServiceTest do
   end
 
   describe "get_one_token/1" do
-    test "Retrieves one token successfully", %{tokens: tokens} do
-      any_token = Enum.random(tokens)
-      assert {:ok, queried_token} = TokenService.get_one_token(any_token.uuid)
+    test "returns a token with preloaded usages when found" do
+      token = insert(:token, status: "active", activated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
+      insert(:usage, token: token, user_uuid: Ecto.UUID.generate())
 
-      assert is_struct(any_token, Token)
-      assert is_struct(queried_token, Token)
-      assert queried_token.uuid == any_token.uuid
+      assert {:ok, fetched_token} = TokenService.get_one_token(token.uuid)
+      assert fetched_token.id == token.id
+      assert fetched_token.status == "active"
+      assert length(fetched_token.usages) == 1
     end
 
-    test "returns error when token is not found", %{tokens: _tokens} do
-      random_uuid = Ecto.UUID.generate()
-      assert {:error, :not_found} == TokenService.get_one_token(random_uuid)
+    test "returns error when token not found" do
+      assert {:error, :not_found} = TokenService.get_one_token(Ecto.UUID.generate())
     end
   end
 
