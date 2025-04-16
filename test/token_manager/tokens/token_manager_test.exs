@@ -22,9 +22,13 @@ defmodule TokenManager.Tokens.TokenManagerTest do
   end
 
   test "lists all tokens" do
+    insert(:token, status: "available")
+    insert(:token, status: "active", activated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
+
     assert {:ok, tokens} = Tokens.TokenManager.call(:list_tokens)
     assert is_list(tokens) == true
     assert Enum.all?(tokens, fn token -> is_struct(token, Token) end)
+    assert length(tokens) >= 2 # At least the inserted tokens
   end
 
   test "releases all tokens" do
@@ -48,7 +52,6 @@ defmodule TokenManager.Tokens.TokenManagerTest do
   end
 
   test "automatically releases expired tokens", %{pid: pid} do
-    # Allocate a token to a user, then a usage
     token = insert(:token, status: "active", activated_at: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second))
     usage = insert(:usage, token: token)
 
